@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <title>Indent Cards Filterable</title>
+    <style>
+      body {
+        background: #f6f8fa;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+      }
+      .controls-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 18px;
+        justify-content: center;
+        margin: 32px 0 16px 0;
+      }
+      .controls-bar input[type="date"],
+      .controls-bar input[type="text"] {
+        padding: 10px 14px;
+        border-radius: 7px;
+        border: 1.6px solid #b0b0b0;
+        font-size: 1.12em;
+        outline: none;
+      }
+      .controls-bar button {
+        padding: 9px 22px;
+        background: #1976d2;
+        color: #fff;
+        border: none;
+        border-radius: 7px;
+        font-size: 1.06em;
+        cursor: pointer;
+        transition: background .15s;
+      }
+      .controls-bar button:hover {
+        background: #104f85;
+      }
+      .card-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 44px;
+        justify-content: center;
+        padding: 16px 8px 70px 8px;
+      }
+      .modern-card {
+        background: #fff;
+        border-radius: 22px;
+        box-shadow: 0 6px 30px rgba(60,60,60,0.13);
+        padding: 42px 44px 26px 44px;
+        min-width: 420px;
+        max-width: 520px;
+        width: 100%;
+        margin: 0 auto;
+        border:2.5px solid #e0e0e0;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        position: relative;
+        transition: box-shadow .18s;
+      }
+      .modern-card:hover { box-shadow:0 14px 44px rgba(60,60,60,0.17);}
+      .card-header {
+        font-size: 1.32em;
+        font-weight: bold;
+        color: #1a5bb8;
+        margin-bottom: 18px;
+        text-align: center;
+        letter-spacing:.4px;
+      }
+      .fields-table {
+        width: 100%;
+        border-collapse:separate;
+        border-spacing: 0 10px;
+        margin: 0;
+      }
+      .fields-table tr {
+        vertical-align: top;
+      }
+      .field-label {
+        font-weight: 600;
+        color: #222;
+        text-align: left;
+        width: 34%;
+        min-width: 120px;
+        border:1.6px solid #e0e0e0;
+        border-radius:7px 0 0 7px;
+        background: #f7fafd;
+        padding:7px 0 7px 12px;
+        white-space: nowrap;
+        font-size:1.09em;
+      }
+      .field-value {
+        padding:7px 0 7px 13px;
+        text-align: left;
+        color: #333;
+        word-break: break-word;
+        background: #fbfbfb;
+        border:1.6px solid #e0e0e0;
+        border-left: none;
+        border-radius:0 7px 7px 0;
+        font-size:1.08em;
+      }
+      .sample-link a {
+        color: #1976d2;
+        text-decoration: underline;
+      }
+      .approval-badge {
+        background: #ffe082;
+        color: #6d4c00;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 1em;
+      }
+      .print-btn {
+        position: absolute;
+        top: 22px; right: 28px;
+        background: #fff;
+        border: 1.5px solid #1976d2;
+        color: #1976d2;
+        border-radius: 8px;
+        padding: 4px 18px;
+        font-size: 1.07em;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background .12s, color .12s;
+      }
+      .print-btn:hover {
+        background: #1976d2;
+        color: #fff;
+      }
+      @media (max-width: 700px) {
+        .modern-card { min-width: 97vw; max-width: 99vw; padding:16px 2vw;}
+        .fields-table .field-label { min-width:60px;font-size:1em;}
+        .controls-bar {flex-direction:column;gap:12px;}
+      }
+      @media print {
+        body * { visibility: hidden !important; }
+        .modern-card.printing {
+          visibility: visible !important;
+          position: absolute !important;
+          left: 0; top: 0; right:0; margin:auto;
+          z-index:9999;
+          box-shadow:none !important;
+          width:98vw !important; max-width:98vw !important; min-width:98vw !important;
+        }
+        .modern-card.printing * { visibility: visible !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <h2 style="text-align:center;color:#1976d2;margin-top:30px;margin-bottom:6px;">Indent Requests</h2>
+    <div class="controls-bar">
+      <input type="date" id="dateInput">
+      <button onclick="applyDateFilter()">Apply</button>
+      <input type="text" id="searchInput" placeholder="Search by Name, Indent no, Department..." oninput="liveSearch()">
+      <button onclick="viewAll()">View All</button>
+    </div>
+    <div id="cards-container">
+      Loading...
+    </div>
+    <script>
+      let allCardsData = [];
+      let currentFiltered = [];
+      let showFields = [];
+      let searchCols = {};
+
+      function renderCards(dataArr) {
+        const container = document.getElementById('cards-container');
+        if (!dataArr.length) {
+          container.innerHTML = '<div style="margin:32px;text-align:center;color:#888;font-size:1.13em;">No indents found.</div>';
+          return;
+        }
+        let html = '<div class="card-grid">';
+        dataArr.forEach((row, idx) => {
+          let fieldRows = '';
+          showFields.forEach((col, i) => {
+            // Approvel row only once, Indent no. label changed to "Required date"
+            if (i === searchCols.approvelIdx) return; // skip here, show below
+            let value = row[i] || "";
+            if (col.toLowerCase().includes("sample picture") && value) {
+              value = `<span class="sample-link"><a href="${value}" target="_blank">View Sample</a></span>`;
+            }
+            fieldRows += `<tr>
+              <td class="field-label">${col}:</td>
+              <td class="field-value">${value}</td>
+            </tr>`;
+          });
+          // Approvel shown at end, in its own row, only once
+          let approvelRow = '';
+          if (searchCols.approvelIdx > -1) {
+            let value = row[searchCols.approvelIdx] || '';
+            if (value) value = `<span class="approval-badge">${value}</span>`;
+            approvelRow = `<tr>
+              <td class="field-label">Approvel:</td>
+              <td class="field-value">${value}</td>
+            </tr>`;
+          }
+          html += `
+            <div class="modern-card" data-idx="${idx}">
+              <button class="print-btn" title="Print this card" onclick="printCard(this)">Print</button>
+              <div class="card-header">Request #${idx+1}</div>
+              <table class="fields-table">${fieldRows}${approvelRow}</table>
+            </div>
+          `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+      }
+
+      // Print only the selected card
+      function printCard(btn) {
+        document.querySelectorAll('.modern-card').forEach(c => c.classList.remove('printing'));
+        let card = btn.closest('.modern-card');
+        card.classList.add('printing');
+        window.print();
+        setTimeout(() => card.classList.remove('printing'), 800);
+      }
+
+      // Date filter (on any column with 'date' in name)
+      function applyDateFilter() {
+        const dateVal = document.getElementById('dateInput').value;
+        if (!dateVal) { renderCards(allCardsData); return; }
+        // Find first date column index
+        let dateIdx = showFields.findIndex(f=>f.toLowerCase().includes('date'));
+        if (dateIdx==-1) { renderCards(allCardsData); return; }
+        const filtered = allCardsData.filter(row => {
+          let cellVal = row[dateIdx];
+          return cellVal && cellVal.substr(0,10) === dateVal;
+        });
+        currentFiltered = filtered;
+        renderCards(filtered);
+      }
+
+      // Search by Name / Indent no / Department
+      function liveSearch() {
+        const q = document.getElementById('searchInput').value.trim().toLowerCase();
+        if (!q) {
+          renderCards(currentFiltered.length ? currentFiltered : allCardsData);
+          return;
+        }
+        let nameIdx = showFields.findIndex(f=>f.toLowerCase().includes("name"));
+        let depIdx = showFields.findIndex(f=>f.toLowerCase().includes("department"));
+        let indentIdx = searchCols.indentIdx;
+        let filtered = (currentFiltered.length ? currentFiltered : allCardsData).filter(row => {
+          return (
+            (nameIdx>-1 && (row[nameIdx]+"").toLowerCase().includes(q)) ||
+            (depIdx>-1 && (row[depIdx]+"").toLowerCase().includes(q)) ||
+            (indentIdx>-1 && (row[indentIdx]+"").toLowerCase().includes(q))
+          );
+        });
+        renderCards(filtered);
+      }
+
+      // View all cards (reset filters)
+      function viewAll() {
+        document.getElementById('dateInput').value = '';
+        document.getElementById('searchInput').value = '';
+        currentFiltered = [];
+        renderCards(allCardsData);
+      }
+
+      // On load: fetch data
+      google.script.run.withSuccessHandler(function(res) {
+        if (res.error) {
+          document.getElementById('cards-container').innerHTML = '<div style="color:red;">'+res.error+'</div>';
+          return;
+        }
+        allCardsData = res.rows;
+        showFields = res.header;
+        searchCols = res.searchCols;
+        renderCards(allCardsData);
+      }).getCardsData();
+    </script>
+  </body>
+</html>
+
+//code gs coding 
+
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('index');
+}
+
+function getCardsData() {
+  var externalSheetId = '1aszScb9PmOQHTHrbYP7IJyZ8Y60np91nXnADbifA9Bo';
+  var sheetName = 'Sheet1';
+  var sheet;
+  try {
+    var ss = SpreadsheetApp.openById(externalSheetId);
+    sheet = ss.getSheetByName(sheetName);
+  } catch (e) {
+    return {error: 'External sheet ya sheet name galat hai!'};
+  }
+  if (!sheet) {
+    return {error: 'Sheet "' + sheetName + '" nahi mili external file me!'};
+  }
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) return {error: "Koi data nahi mila!"};
+  var header = data[0];
+  var rows = data.slice(1);
+
+  // Identify L column (unwanted) by index
+  let lIdx = -1;
+  for(let i=0; i<header.length; ++i) {
+    // L column detection: by header letter or unwanted ID look-alike
+    if(header[i].toString().trim().toLowerCase() === 'l' 
+      || header[i].toString().toLowerCase().includes('sample picture code') // if any special L column label
+      || (i === 11) // Sheet's 12th col, adjust if your sheet structure changes
+    ) {
+      lIdx = i;
+      break;
+    }
+  }
+
+  // Find Indent no. and Approvel columns (for guaranteed presence)
+  let indentIdx = header.findIndex(h=>/^indent\s*no\.?$/i.test(h));
+  let approvelIdx = header.findIndex(h=>/^approv/i.test(h));
+
+  // Prepare visible headers (all except L column)
+  let visibleHeader = header.map((h,i)=>({name: h, idx:i}))
+    .filter(h=>h.idx !== lIdx);
+
+  // Format data: skip L column, format date fields
+  let visibleRows = rows.map(row=>{
+    return visibleHeader.map(h=>{
+      let v = row[h.idx];
+      // Format date fields (if looks like date)
+      if((h.name.toLowerCase().includes('date')) && v){
+        if (typeof v === "string" && v.length >= 10) v = v.substr(0,10);
+        else if (v instanceof Date) v = Utilities.formatDate(v, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      }
+      return v===undefined?'':v;
+    });
+  });
+
+  // Mark which visibleHeader indexes are for "Approvel" and "Indent no."
+  let visIndentIdx = visibleHeader.findIndex(h=>/^indent\s*no\.?$/i.test(h.name));
+  let visApprovelIdx = visibleHeader.findIndex(h=>/^approv/i.test(h.name));
+
+  // Instead of "Indent no.", use label "Required date" in the UI.
+  let displayHeader = visibleHeader.map((h, i) => {
+    if (i === visIndentIdx) return "Indent No"; // Change label here
+    return h.name;
+  });
+
+  return {
+    header: displayHeader,
+    rows: visibleRows,
+    searchCols: {
+      indentIdx: visIndentIdx,
+      approvelIdx: visApprovelIdx
+    }
+  };
+}
